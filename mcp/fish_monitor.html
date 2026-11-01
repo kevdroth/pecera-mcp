@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Pecera MCP Monitor</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; overflow: hidden; }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: #0a0f1a;
+            color: #e2e8f0;
+        }
+        canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: #0c1929;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0; right: 0;
+            width: 310px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .overlay > * { pointer-events: auto; }
+
+        .clock-bar {
+            background: rgba(15,23,42,0.92);
+            border-bottom: 1px solid #1e3a5f;
+            padding: 8px 12px;
+            text-align: center;
+            backdrop-filter: blur(8px);
+        }
+        #v-clock {
+            font-size: 2em;
+            font-family: monospace;
+            color: #fbbf24;
+            letter-spacing: 2px;
+        }
+        .env-row {
+            display: flex;
+            justify-content: center;
+            gap: 14px;
+            margin-top: 2px;
+            font-size: 0.85em;
+        }
+
+        .panels {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: rgba(15,23,42,0.85);
+            backdrop-filter: blur(6px);
+        }
+        .panels::-webkit-scrollbar { width: 5px; }
+        .panels::-webkit-scrollbar-track { background: transparent; }
+        .panels::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+
+        .p {
+            background: rgba(30,41,59,0.95);
+            border-radius: 8px;
+            padding: 8px 10px;
+            border: 1px solid #334155;
+        }
+        .p h3 {
+            color: #38bdf8;
+            font-size: 0.78em;
+            margin-bottom: 5px;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 2px;
+        }
+        .r {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+            font-size: 0.75em;
+        }
+        .r .l { color: #94a3b8; }
+        .r .v { font-weight: 600; }
+        .bg {
+            width: 100%;
+            height: 6px;
+            background: #334155;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 1px 0 3px;
+        }
+        .bf {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s, background 0.3s;
+        }
+        .dot {
+            display: inline-block;
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            margin-right: 3px;
+        }
+        .on { background: #22c55e; }
+        .off { background: #ef4444; }
+        .act {
+            color: #fbbf24;
+            font-family: monospace;
+            font-size: 0.75em;
+        }
+        .alert { color: #ef4444; font-weight: 600; }
+
+        .legend {
+            position: fixed;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            background: rgba(15,23,42,0.85);
+            backdrop-filter: blur(6px);
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 0.7em;
+            z-index: 10;
+            border: 1px solid #334155;
+        }
+        .legend-item { display: flex; align-items: center; gap: 4px; }
+        .legend-box { width: 10px; height: 10px; border-radius: 2px; }
+
+        @media (max-width: 768px) {
+            .overlay {
+                position: fixed;
+                top: auto; right: 0; bottom: 0;
+                width: 100%;
+                height: auto;
+                max-height: 45vh;
+                flex-direction: column;
+            }
+            .clock-bar {
+                border-bottom: none;
+                border-top: 1px solid #1e3a5f;
+                padding: 4px 10px;
+                display: flex;
+                justify-content: center;
+                gap: 12px;
+                align-items: center;
+            }
+            #v-clock { font-size: 1.2em; }
+            .env-row { margin-top: 0; gap: 8px; }
+            .panels {
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 4px;
+                padding: 4px;
+                max-height: 38vh;
+            }
+            .panels .p { flex: 1 1 45%; min-width: 140px; }
+            .legend { bottom: auto; top: 4px; font-size: 0.6em; padding: 3px 10px; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="tank"></canvas>
+
+    <div class="legend">
+        <div class="legend-item"><div class="legend-box" style="background:#0ea5e9"></div>Agua</div>
+        <div class="legend-item"><div class="legend-box" style="background:#f97316;border-radius:50%"></div>Pez</div>
+        <div class="legend-item"><div class="legend-box" style="background:#f59e0b;border-radius:50%;width:7px;height:7px"></div>Alimento</div>
+        <div class="legend-item"><div class="legend-box" style="background:#22c55e"></div>Planta</div>
+        <div class="legend-item"><div class="legend-box" style="background:#ef4444"></div>Calentador</div>
+        <div class="legend-item"><div class="legend-box" style="background:#8b5cf6"></div>Filtro</div>
+        <div class="legend-item"><div class="legend-box" style="background:#78716c"></div>Roca</div>
+    </div>
+
+    <div class="overlay">
+        <div class="clock-bar">
+            <div id="v-clock">--:--</div>
+            <div class="env-row">
+                <span><span id="v-icon"></span> <span id="v-outdoor">--°C</span></span>
+                <span style="color:#64748b">Exterior</span>
+            </div>
+        </div>
+        <div class="panels">
+            <div class="p">
+                <h3>Agua</h3>
+                <div class="r"><span class="l">Temperatura</span><span class="v" id="v-temp">--</span></div>
+                <div class="r"><span class="l">pH</span><span class="v" id="v-ph">--</span></div>
+                <div class="r"><span class="l">Oxigeno</span><span class="v" id="v-oxy">--</span></div>
+                <div class="bg"><div class="bf" id="b-oxy"></div></div>
+                <div class="r"><span class="l">Nivel</span><span class="v" id="v-wl">--</span></div>
+                <div class="bg"><div class="bf" id="b-wl"></div></div>
+                <div class="r"><span class="l">Claridad</span><span class="v" id="v-cl">--</span></div>
+                <div class="bg"><div class="bf" id="b-cl"></div></div>
+            </div>
+            <div class="p">
+                <h3>Calidad</h3>
+                <div class="r"><span class="l">NH3</span><span class="v" id="v-nh3">--</span></div>
+                <div class="bg"><div class="bf" id="b-nh3"></div></div>
+                <div class="r"><span class="l">NO2</span><span class="v" id="v-no2">--</span></div>
+                <div class="bg"><div class="bf" id="b-no2"></div></div>
+                <div class="r"><span class="l">NO3</span><span class="v" id="v-no3">--</span></div>
+                <div class="bg"><div class="bf" id="b-no3"></div></div>
+            </div>
+            <div class="p">
+                <h3>Pez</h3>
+                <div class="r"><span class="l">Posicion</span><span class="v" id="v-pos">--</span></div>
+                <div class="r"><span class="l">Salud</span><span class="v" id="v-hp">--</span></div>
+                <div class="bg"><div class="bf" id="b-hp"></div></div>
+                <div class="r"><span class="l">Hambre</span><span class="v" id="v-hu">--</span></div>
+                <div class="bg"><div class="bf" id="b-hu"></div></div>
+                <div class="r"><span class="l">Estres</span><span class="v" id="v-st">--</span></div>
+                <div class="bg"><div class="bf" id="b-st"></div></div>
+                <div class="r"><span class="l">Alimento pasto</span><span class="v" id="v-food">0</span></div>
+            </div>
+            <div class="p">
+                <h3>Equipos</h3>
+                <div class="r"><span class="l">Calentador</span><span class="v" id="v-heat">--</span></div>
+                <div class="r"><span class="l">Filtro</span><span class="v" id="v-filt">--</span></div>
+                <div class="r"><span class="l">Luz</span><span class="v" id="v-luz">--</span></div>
+                <div class="r"><span class="l">Auto-cuidar</span><span class="v" id="v-auto">--</span></div>
+                <div class="r" style="margin-top:4px;border-top:1px solid #334155;padding-top:4px">
+                    <span class="l">Accion</span>
+                    <span class="act" id="v-act">Esperando...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const cv = document.getElementById("tank");
+    const ctx = cv.getContext("2d");
+    const N = 5;
+    let C, fishDraw = {x:0, y:0}, fishFrame = 0;
+
+    function resize() {
+        cv.width = window.innerWidth;
+        cv.height = window.innerHeight;
+        C = Math.min(cv.width, cv.height) / N;
+        const ox = (cv.width - N*C) / 2;
+        const oy = (cv.height - N*C) / 2;
+        fishDraw.x = ox + 2*C + C/2;
+        fishDraw.y = oy + 2*C + C/2;
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    function gridXY() {
+        return { ox: (cv.width - N*C)/2, oy: (cv.height - N*C)/2 };
+    }
+
+    function cellBg(x, y, data) {
+        const g = data.grid;
+        if (g.heater.some(c => c[0]===x && c[1]===y)) return "#dc2626";
+        if (g.filter.some(c => c[0]===x && c[1]===y)) return "#7c3aed";
+        if (g.plants.some(c => c[0]===x && c[1]===y)) return "#16a34a";
+        if (g.rocks.some(c => c[0]===x && c[1]===y)) return "#57534e";
+        const cl = data.agua.clarity / 100;
+        return `rgb(${Math.round(14*cl)},${Math.round(165*cl)},${Math.round(233*cl)})`;
+    }
+
+    function drawPlant(px, py) {
+        const {ox, oy} = gridXY();
+        const cx = ox + px*C + C/2, by = oy + (py+1)*C - 4;
+        ctx.strokeStyle = "#22c55e";
+        ctx.lineWidth = Math.max(2, C/28);
+        ctx.lineCap = "round";
+        const sc = C / 80;
+        for (let i = -1; i <= 1; i++) {
+            ctx.beginPath();
+            ctx.moveTo(cx+i*8*sc, by);
+            ctx.quadraticCurveTo(cx+i*12*sc, by-22*sc, cx+i*6*sc, by-32*sc);
+            ctx.stroke();
+        }
+    }
+
+    function drawHeater(px, py, on) {
+        const {ox, oy} = gridXY();
+        const cx = ox + px*C + C/2, cy = oy + py*C + C/2;
+        const s = C / 80;
+        ctx.fillStyle = on ? "#ef4444" : "#6b7280";
+        ctx.fillRect(cx-9*s, cy-15*s, 18*s, 30*s);
+        ctx.fillStyle = on ? "#fbbf24" : "#374151";
+        ctx.beginPath(); ctx.arc(cx, cy, 4*s, 0, Math.PI*2); ctx.fill();
+    }
+
+    function drawFilter(px, py, on) {
+        const {ox, oy} = gridXY();
+        const cx = ox + px*C + C/2, cy = oy + py*C + C/2;
+        const s = C / 80;
+        ctx.fillStyle = on ? "#8b5cf6" : "#6b7280";
+        ctx.fillRect(cx-11*s, cy-13*s, 22*s, 26*s);
+        if (on) {
+            ctx.strokeStyle = "#c4b5fd"; ctx.lineWidth = 1.5*s;
+            for (let i = 0; i < 3; i++) {
+                ctx.beginPath(); ctx.moveTo(cx-7*s, cy-6*s+i*6*s); ctx.lineTo(cx+7*s, cy-6*s+i*6*s); ctx.stroke();
+            }
+        }
+    }
+
+    function drawRock(px, py) {
+        const {ox, oy} = gridXY();
+        const cx = ox + px*C + C/2, cy = oy + py*C + C/2 + 4;
+        const s = C / 80;
+        ctx.fillStyle = "#78716c";
+        ctx.beginPath(); ctx.ellipse(cx, cy, 15*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "#a8a29e";
+        ctx.beginPath(); ctx.ellipse(cx-3*s, cy-3*s, 7*s, 4*s, -0.3, 0, Math.PI*2); ctx.fill();
+    }
+
+    function drawFish(px, py, fish) {
+        const s = C / 80;
+        const hp = fish.health / 100;
+        const r = Math.round(249*hp + 100*(1-hp));
+        const g = Math.round(115*hp + 100*(1-hp));
+        const b = Math.round(22*hp + 100*(1-hp));
+        const col = `rgb(${r},${g},${b})`;
+
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.ellipse(px, py, 15*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
+
+        ctx.fillStyle = "#fff";
+        ctx.beginPath(); ctx.arc(px+7*s, py-2*s, 4*s, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "#000";
+        ctx.beginPath(); ctx.arc(px+8*s, py-2*s, 2*s, 0, Math.PI*2); ctx.fill();
+
+        fishFrame = (fishFrame + 1) % 20;
+        const tw = Math.sin(fishFrame*0.6)*5*s;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.moveTo(px-15*s, py);
+        ctx.lineTo(px-24*s, py-8*s+tw);
+        ctx.lineTo(px-24*s, py+8*s+tw);
+        ctx.closePath(); ctx.fill();
+
+        if (fish.stress > 50) {
+            ctx.strokeStyle = "rgba(239,68,68,0.5)"; ctx.lineWidth = 1.5*s;
+            ctx.setLineDash([4*s,4*s]);
+            ctx.beginPath(); ctx.arc(px, py, 20*s, 0, Math.PI*2); ctx.stroke();
+            ctx.setLineDash([]);
+        }
+    }
+
+    function drawFood(food) {
+        if (!food || !food.length) return;
+        const {ox, oy} = gridXY();
+        const s = C / 80;
+        food.forEach(fd => {
+            let fy;
+            if (fd.ground) {
+                fy = oy + fd.y * C + C/2;
+            } else {
+                fy = oy + fd.y * C + (fd.fall / (fd.target_y || N)) * (fd.target_y || N) * C + C/2;
+            }
+            const fx = ox + fd.x * C + C/2;
+
+            if (fd.ground && fd.on_plant) {
+                ctx.fillStyle = "rgba(245,158,11,0.35)";
+                ctx.beginPath(); ctx.arc(fx, fy, 13*s, 0, Math.PI*2); ctx.fill();
+            }
+
+            ctx.fillStyle = "#f59e0b";
+            ctx.beginPath(); ctx.arc(fx, fy, 6*s, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = "#fbbf24";
+            ctx.beginPath(); ctx.arc(fx, fy-1*s, 3.5*s, 0, Math.PI*2); ctx.fill();
+
+            if (!fd.ground) {
+                ctx.strokeStyle = "rgba(245,158,11,0.6)"; ctx.lineWidth = 2*s;
+                ctx.setLineDash([5*s, 4*s]);
+                ctx.beginPath(); ctx.moveTo(fx, fy+6*s); ctx.lineTo(fx, fy+18*s); ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        });
+    }
+
+    function drawBubbles(on) {
+        if (!on) return;
+        const {ox, oy} = gridXY();
+        const s = C / 80;
+        const t = Date.now() / 500;
+        const fx = ox + 4*C + C/2;
+        const colTop = oy;
+        const colBot = oy + 5*C;
+        const total = colBot - colTop;
+        for (let i = 0; i < 12; i++) {
+            const speed = 0.3 + (i % 3) * 0.15;
+            const yOff = ((t * speed + i * 11) % total);
+            const by = colTop + yOff;
+            const bxo = fx + Math.sin(t + i * 1.9) * 4*s;
+            const alpha = 0.7 * Math.min(1, yOff / (C*0.5)) * Math.min(1, (colBot - by) / (C*0.5));
+            if (alpha <= 0.05) continue;
+            ctx.fillStyle = `rgba(147,197,253,${alpha})`;
+            ctx.beginPath(); ctx.arc(bxo, by, (2.5 + (i%3)*0.8)*s, 0, Math.PI*2); ctx.fill();
+        }
+    }
+
+    function barCol(pct, inv) {
+        if (inv) return pct>60?"#ef4444":pct>30?"#f59e0b":"#22c55e";
+        return pct>70?"#22c55e":pct>40?"#f59e0b":"#ef4444";
+    }
+
+    function sBar(id, pct, inv) {
+        const el = document.getElementById(id);
+        el.style.width = Math.max(0, Math.min(100, pct)) + "%";
+        el.style.background = barCol(pct, inv);
+    }
+
+    function eDot(on) {
+        return `<span class="dot ${on?'on':'off'}"></span>${on?'ON':'OFF'}`;
+    }
+
+    function draw(data) {
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        const {ox, oy} = gridXY();
+        const light = data.agua.light_on;
+
+        for (let x = 0; x < N; x++)
+            for (let y = 0; y < N; y++) {
+                ctx.fillStyle = cellBg(x, y, data);
+                ctx.fillRect(ox+x*C, oy+y*C, C, C);
+                ctx.strokeStyle = "#1e3a5f"; ctx.lineWidth = 1;
+                ctx.strokeRect(ox+x*C, oy+y*C, C, C);
+            }
+
+        if (!light) {
+            ctx.fillStyle = "rgba(0,0,0,0.55)";
+            ctx.fillRect(ox, oy, N*C, N*C);
+        }
+
+        const g = data.grid;
+        g.plants.forEach(([x,y]) => drawPlant(x, y));
+        g.heater.forEach(([x,y]) => drawHeater(x, y, data.agua.heater_on));
+        g.filter.forEach(([x,y]) => drawFilter(x, y, data.agua.filter_on));
+        g.rocks.forEach(([x,y]) => drawRock(x, y));
+
+        drawFood(data.food);
+        drawBubbles(data.agua.filter_on);
+
+        if (data.pez.alive) {
+            const tx = ox + data.pez.x * C + C/2;
+            const ty = oy + data.pez.y * C + C/2;
+            fishDraw.x += (tx - fishDraw.x) * 0.15;
+            fishDraw.y += (ty - fishDraw.y) * 0.15;
+            drawFish(fishDraw.x, fishDraw.y, data.pez);
+        }
+    }
+
+    function upd(d) {
+        const a = d.agua, f = d.pez;
+
+        const hh = String(a.sim_hour).padStart(2,"0");
+        const mm = String(a.sim_minute).padStart(2,"0");
+        document.getElementById("v-clock").textContent = hh+":"+mm;
+        const isNight = a.sim_hour >= 22 || a.sim_hour < 6;
+        document.getElementById("v-icon").innerHTML = isNight ? "&#127769;" : "&#9728;&#65039;";
+        document.getElementById("v-outdoor").textContent = a.outdoor_temp+"°C";
+
+        document.getElementById("v-temp").textContent = a.temp+"°C";
+        document.getElementById("v-temp").className = "v"+((a.temp>=24&&a.temp<=30)?"":" alert");
+        document.getElementById("v-ph").textContent = a.ph;
+        document.getElementById("v-ph").className = "v"+((a.ph>=6.5&&a.ph<=8.0)?"":" alert");
+        document.getElementById("v-oxy").textContent = a.oxygen+"%"; sBar("b-oxy", a.oxygen, false);
+        document.getElementById("v-wl").textContent = a.water_level+"%"; sBar("b-wl", a.water_level, false);
+        document.getElementById("v-cl").textContent = a.clarity+"%"; sBar("b-cl", a.clarity, false);
+        document.getElementById("v-nh3").textContent = a.ammonia+" ppm"; sBar("b-nh3", (1-a.ammonia/5)*100, false);
+        document.getElementById("v-no2").textContent = a.nitrite+" ppm"; sBar("b-no2", (1-a.nitrite/5)*100, false);
+        document.getElementById("v-no3").textContent = a.nitrate+" ppm"; sBar("b-no3", (1-a.nitrate/100)*100, false);
+        document.getElementById("v-pos").textContent = `(${f.x},${f.y})`;
+        document.getElementById("v-hp").textContent = f.health+"%"; sBar("b-hp", f.health, false);
+        document.getElementById("v-hu").textContent = f.hunger+"%"; sBar("b-hu", f.hunger, true);
+        document.getElementById("v-st").textContent = f.stress+"%"; sBar("b-st", f.stress, true);
+        const groundFood = d.food ? d.food.filter(fd => fd.ground).length : 0;
+        document.getElementById("v-food").textContent = groundFood;
+        document.getElementById("v-heat").innerHTML = eDot(a.heater_on);
+        document.getElementById("v-filt").innerHTML = eDot(a.filter_on);
+        document.getElementById("v-luz").innerHTML = eDot(a.light_on);
+        document.getElementById("v-auto").innerHTML = eDot(a.auto_mode);
+        document.getElementById("v-act").textContent = a.last_action;
+        draw(d);
+    }
+
+    async function tick() {
+        try { await fetch("/tick", {method:"POST"}); } catch(e) {}
+    }
+
+    async function poll() {
+        try {
+            const r = await fetch("/estado?t="+Date.now(), {cache:"no-store"});
+            if (r.ok) upd(await r.json());
+        } catch(e) {}
+    }
+
+    setInterval(tick, 1000);
+    setInterval(poll, 300);
+    poll();
+    </script>
+</body>
+</html>

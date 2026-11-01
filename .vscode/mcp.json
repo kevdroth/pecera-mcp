@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "pecera": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["C:\\Apache24\\htdocs\\UP\\pecera\\mcp\\fish_tank_server.py"]
+    }
+  }
+}
