@@ -3,6 +3,8 @@ import json
 import math
 import random
 import logging
+import socket
+import sys
 import threading
 import time
 from collections import deque
@@ -454,6 +456,19 @@ def ejecutar_web():
 
 
 if __name__ == "__main__":
+    _probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        _probe.bind(("127.0.0.1", 5001))
+    except OSError:
+        print(
+            "WARNING: PUERTO 5001 OCUPADO por OTRA instancia de fish_tank_server. "
+            "Las tools de esta instancia modifican un estado que el monitor NO muestra "
+            "(otro proceso esta en 5001). Diagnosticar: netstat -ano | findstr :5001; "
+            "cerrar la instancia vieja con taskkill /PID <pid> /F.",
+            file=sys.stderr,
+        )
+    finally:
+        _probe.close()
     threading.Thread(target=ejecutar_web, daemon=True).start()
-    print("Monitor: http://127.0.0.1:5001")
+    print("Monitor: http://127.0.0.1:5001", file=sys.stderr)
     mcp.run()

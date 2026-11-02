@@ -1,9 +1,12 @@
 {
   "servers": {
-    "pecera": {
+    "ollama-pecera": {
       "type": "stdio",
       "command": "python",
-      "args": ["C:\\Apache24\\htdocs\\UP\\pecera\\mcp\\fish_tank_server.py"]
+      "args": ["-u", "C:\\Apache24\\htdocs\\UP\\pecera\\mcp\\ollama_bridge.py"],
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
     }
   }
 }
